@@ -20,20 +20,6 @@ namespace legion::physics
         auto incCollider = isARef ? manifold.colliderB : manifold.colliderA;
         float largestDotResult = std::numeric_limits<float>::lowest();
 
-        //------------------------------- find face that is touching refFace -------------------------------------------------//
-
-        for (auto face : incCollider->GetHalfEdgeFaces())
-        {
-            math::vec3 worldFaceNormal = incTransform * math::vec4(face->normal, 0);
-
-            float currentDotResult = math::dot(-normal, worldFaceNormal);
-            if (currentDotResult > largestDotResult)
-            {
-                largestDotResult = currentDotResult;
-                incFace = face;
-            }
-        }
-
         //------------------------------- get all world vertex positions in incFace -------------------------------------------------//
         std::vector<ContactVertex> outputContactPoints;
 
@@ -68,11 +54,10 @@ namespace legion::physics
 
         refFace->forEachEdge(clipNeigboringFaceWithOutput);
 
-
         for (const auto& incidentContact : outputContactPoints)
         {
             float distanceToCollisionPlane = PhysicsStatics::PointDistanceToPlane(normal, faceCentroid, incidentContact.position);
-
+            
             if (distanceToCollisionPlane < constants::contactOffset)
             {
                 math::vec3 referenceContact = incidentContact.position - normal * distanceToCollisionPlane;

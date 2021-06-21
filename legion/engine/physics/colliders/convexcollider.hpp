@@ -89,6 +89,7 @@ namespace legion::physics
             ConstructConvexHullWithMesh(mesh,spacingAmount);
         }
 
+        //void ConstructConvexHullWithMesh(legion::core::mesh_handle meshHandle, math::mat4 DEBUG_transform );
         
 
         //TODO(algorythmix,jelled1st) This desperately needs cleanup
@@ -108,6 +109,8 @@ namespace legion::physics
 
             ConstructConvexHullWithMesh(mesh,math::vec3(),shouldDebug);
         }
+
+
 
         void  ConstructConvexHullWithMesh(mesh& mesh, math::vec3 spacingAmount = math::vec3(), bool shouldDebug = false);
        
@@ -341,7 +344,7 @@ namespace legion::physics
             return halfEdgeFaces;
         }
 
-        const std::vector<math::vec3>& GetVertices() const
+        std::vector<math::vec3>& GetVertices() 
         {
             return vertices;
         }
@@ -363,6 +366,7 @@ namespace legion::physics
             }
         }
 
+        void PopulateVertexListWithHalfEdges();
 
     private:
 
@@ -655,7 +659,6 @@ namespace legion::physics
             }
         }
 
-        
         std::vector<HalfEdgeFace*> halfEdgeFaces;
 
         // Convex hull generation debug stuffs

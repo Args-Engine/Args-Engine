@@ -1,9 +1,11 @@
 #pragma once
 #include <core/core.hpp>
+#include <physics/halfedgeedge.hpp>
+
 
 namespace legion::physics
 {
-	struct HalfEdgeEdge;
+    struct ColliderFaceToVert;
 
 	struct HalfEdgeFace
 	{
@@ -20,12 +22,18 @@ namespace legion::physics
             concave
         };
 
-		HalfEdgeEdge* startEdge;
 		math::vec3 normal;
 		math::vec3 centroid;
         math::color DEBUG_color;
+        HalfEdgeEdge* startEdge = nullptr;
+        ColliderFaceToVert* faceToVert = nullptr; //only used for initialization of quickhull, unfortunately cant find a better solution
+      
         
 		HalfEdgeFace(HalfEdgeEdge* newStartEdge, math::vec3 newNormal);
+
+        void initializeFace();
+
+        float CalculateFaceArea();
 
         /**@brief Deletes all the edges of this face
          * Warning: pairing edges are not deleted because their face may still exist
@@ -39,7 +47,10 @@ namespace legion::physics
 		/** @brief given a function that takes in a HalfEdgeEdge*, 
 		* executes the function on each edge connected to 'startEdge'
 		*/
-		void forEachEdge(legion::core::delegate< void(HalfEdgeEdge*)> functionToExecute);
+		void forEachEdge(legion::core::delegate< void(HalfEdgeEdge*)> functionToExecute,
+            legion::core::delegate <HalfEdgeEdge* (HalfEdgeEdge*)> getNextEdge = [](HalfEdgeEdge* current) { return current->nextEdge; });
+
+        void forEachEdgeReverse(legion::core::delegate< void(HalfEdgeEdge*)> functionToExecute);
 
         /**@brief Inverses the face
          * The edges will be stored in reverse and therefore the normal will point in the other direction
@@ -103,6 +114,8 @@ namespace legion::physics
         }
 
         void DEBUG_DrawFace(const math::mat4& transform, const math::color& debugColor,  float time = 20.0f);
+
+        void DEBUG_DirectionDrawFace(const math::mat4& transform, const math::color& debugColor, float time = 20.0f);
 
 		~HalfEdgeFace();
 	};

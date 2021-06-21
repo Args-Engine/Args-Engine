@@ -1,15 +1,20 @@
 #include <physics/halfedgeface.hpp>
-#include <physics/halfedgeedge.hpp>
 #include <rendering/debugrendering.hpp>
+#include <physics/physics_statics.hpp>
 
 namespace legion::physics
 {
     HalfEdgeFace::HalfEdgeFace(HalfEdgeEdge* newStartEdge, math::vec3 newNormal) : startEdge{ newStartEdge }, normal{ newNormal }
     {
+        initializeFace();
+    }
+
+    void HalfEdgeFace::initializeFace()
+    {
         /*log::debug("HalfEdgeFace::HalfEdgeFace");*/
         static int faceCount = 0;
 
-        DEBUG_color =math::color( math::linearRand(0.25f, 0.7f), math::linearRand(0.25f, 0.7f), math::linearRand(0.25f, 0.7f));
+        DEBUG_color = math::color(math::linearRand(0.25f, 0.7f), math::linearRand(0.25f, 0.7f), math::linearRand(0.25f, 0.7f));
         math::vec3 faceCenter{ 0.0f };
         int edgeCount = 0;
 
@@ -22,6 +27,16 @@ namespace legion::physics
         forEachEdge(calculateFaceCentroid);
 
         centroid = faceCenter / static_cast<float>(edgeCount);
+
+        math::vec3& planeCentroid = centroid;
+        math::vec3& planeNormal = normal;
+
+        auto centerVerticesToCentroid = [&planeCentroid, &planeNormal](HalfEdgeEdge* edge)
+        {
+            float distanceToPlane = PhysicsStatics::PointDistanceToPlane(planeNormal, planeCentroid, edge->edgePosition);
+            edge->edgePosition += distanceToPlane * planeNormal;
+        };
+        forEachEdge(calculateFaceCentroid);
 
         int currentEdgeId = 0;
 
@@ -42,7 +57,49 @@ namespace legion::physics
         forEachEdge(initializeEdgeToFaceFunc);
 
         faceCount++;
+    }
 
+    float HalfEdgeFace::CalculateFaceArea() 
+    {
+        static bool notfirstTime = true;
+        float sum = 0;
+        math::vec3& faceCentroidPos = centroid;
+
+        auto caculateEdgeArea = [&faceCentroidPos,&sum](HalfEdgeEdge* edge)
+        {
+            const math::vec3& currentEdgePos = edge->edgePosition;
+
+            //get vector of current and next position
+            math::vec3 direction = edge->nextEdge->edgePosition - currentEdgePos;
+            math::vec3 directionNorm = math::normalize(direction);
+
+            //get length of direction
+            float dirVeclength = math::length(direction);
+      
+            //dot (centroid - current) with normalized direction
+            float interpolant = math::dot(faceCentroidPos - currentEdgePos, directionNorm);
+
+            //divide by length,this is the interpolant of the vector
+            interpolant /= dirVeclength;
+
+            //use interpolant to get closest point to centroid
+            math::vec3 closestPointToCentroid = currentEdgePos + direction * interpolant;
+
+            float triangleHeight = math::length(closestPointToCentroid - faceCentroidPos);
+            //multiply length of direction with length of centroid-interpolant point divide by 2
+            sum += (triangleHeight * dirVeclength * 0.5f);
+
+            if (notfirstTime)
+            {
+                notfirstTime = false;
+                debug::drawLine(currentEdgePos, edge->nextEdge->edgePosition, math::colors::black, 5.0f, FLT_MAX, true);
+                debug::drawLine(closestPointToCentroid, faceCentroidPos, math::colors::red, 5.0f, FLT_MAX, true);
+            }
+        };
+
+        forEachEdge(caculateEdgeArea);
+
+        return sum;
     }
 
     void HalfEdgeFace::deleteEdges()
@@ -68,7 +125,9 @@ namespace legion::physics
     }
 
 
-    void HalfEdgeFace::forEachEdge(legion::core::delegate< void(HalfEdgeEdge*)> functionToExecute)
+    void HalfEdgeFace::forEachEdge(legion::core::delegate< void(HalfEdgeEdge*)> functionToExecute,
+        legion::core::delegate <HalfEdgeEdge* (HalfEdgeEdge*)> getNextEdge 
+    )
     {
         HalfEdgeEdge* initialEdge = startEdge;
         HalfEdgeEdge* currentEdge = startEdge;
@@ -80,16 +139,47 @@ namespace legion::physics
         do
         {
             HalfEdgeEdge* edgeToExecuteOn = currentEdge;
-            currentEdge = currentEdge->nextEdge;
+            currentEdge = getNextEdge(currentEdge);
             functionToExecute(edgeToExecuteOn);
 
-        } while (initialEdge != currentEdge && currentEdge->nextEdge != nullptr);
+        } while (initialEdge != currentEdge && getNextEdge(currentEdge) != nullptr);
 
+    }
+
+    void HalfEdgeFace::forEachEdgeReverse(legion::core::delegate<void(HalfEdgeEdge*)> functionToExecute)
+    {
+        auto getPrevEdges = [](HalfEdgeEdge* current) {return current->prevEdge; };
+
+        forEachEdge(functionToExecute, getPrevEdges);
     }
 
     void HalfEdgeFace::inverse()
     {
         normal = -normal; // Inverse the normal
+
+        //collect edges into std::vector
+        std::vector<HalfEdgeEdge*> edges;
+
+        auto collectEdges = [&edges](HalfEdgeEdge* edge)
+        {
+            edges.push_back(edge);
+        };
+
+        forEachEdgeReverse(collectEdges);
+
+        for (size_t i = 0; i < edges.size(); i++)
+        {
+            int nextIndex =( i + 1) % edges.size();
+            int prevIndex = (i - 1) == -1 ? edges.size()-1 : (i - 1);
+
+            HalfEdgeEdge* newNext = edges.at(prevIndex);
+            HalfEdgeEdge* newPrev = edges.at(nextIndex);
+
+            edges.at(i)->setNextAndPrevEdge(newNext, newPrev);
+
+        }
+
+        startEdge = edges.at(0);
     }
 
     bool HalfEdgeFace::testConvexity(const HalfEdgeFace& other) const
@@ -390,6 +480,16 @@ namespace legion::physics
         {
             edge->DEBUG_drawEdge(transform, debugColor, time);
 
+        };
+
+        forEachEdge(drawFunc);
+    }
+
+    void HalfEdgeFace::DEBUG_DirectionDrawFace(const math::mat4& transform, const math::color& debugColor, float time)
+    {
+        auto drawFunc = [&transform, debugColor, time](HalfEdgeEdge* edge)
+        {
+            edge->DEBUG_directionDrawEdge(transform, debugColor, time, 5.0f);
         };
 
         forEachEdge(drawFunc);
